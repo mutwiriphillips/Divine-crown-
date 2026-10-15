@@ -1,0 +1,29 @@
+# Single-server setup: Postgres + web app + worker. Put a reverse proxy with HTTPS (Caddy, nginx) in front.
+# Values come from .env (copy .env.example). DATABASE_URL should use the host "db", e.g.
+#   DATABASE_URL=postgres://shop:CHANGE_ME@db:5432/shop
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shop
+      POSTGRES_DB: shop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes: [pgdata:/var/lib/postgresql/data]
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports: ["127.0.0.1:3000:3000"]
+    volumes: [files:/app/storage]
+    depends_on: [db]
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    command: ["npm", "run", "worker"]
+    volumes: [files:/app/storage]
+    depends_on: [db]
+volumes:
+  pgdata:
+  files:
