@@ -1,10 +1,19 @@
 /**
- * Server error reporting. If ERROR_WEBHOOK_URL is set (e.g. a Slack/Teams incoming webhook or your own
- * endpoint), unhandled server errors are posted there as JSON. No customer data is sent: only the error
- * message, the route and a digest. Errors are always written to the server log.
+ * Server start-up and error reporting.
+ *
+ * RUN_WORKER_IN_WEB=true runs the background jobs (sending messages, releasing unpaid stock holds, checking
+ * M-Pesa payments) inside the web process. Use it on hosts with no separate worker, e.g. Render's free plan.
+ * Jobs only run while the site is awake; on a paid plan run `npm run worker` as its own service instead.
+ *
+ * If ERROR_WEBHOOK_URL is set, unhandled server errors are posted there as JSON (error message, route and a
+ * digest only: no customer data). Errors are always written to the server log.
  */
 export async function register() {
   await import("./lib/env-cleanup");
+  if (process.env.NEXT_RUNTIME === "nodejs" && process.env.RUN_WORKER_IN_WEB === "true") {
+    const { startEmbeddedWorker } = await import("./lib/embedded-worker");
+    startEmbeddedWorker();
+  }
 }
 
 export async function onRequestError(

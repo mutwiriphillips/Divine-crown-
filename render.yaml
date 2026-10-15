@@ -1,12 +1,18 @@
-# Render Blueprint: web app + background worker + Postgres.
-# In Render: New → Blueprint → pick this repository. Render asks for the values marked "sync: false".
-# After the first deploy, open the web service's Shell once and run:
-#   npm run db:seed
-#   OWNER_EMAIL=you@example.com OWNER_NAME="Your Name" OWNER_PASSWORD='a long passphrase' npm run create-owner
-# (Migrations run automatically before every deploy.)
+# Render Blueprint, FREE plan, for testing the shop before paying for anything.
+#   Render dashboard -> New -> Blueprint -> pick this repository.
+#
+# What the free plan means in practice (all of it is fine for testing, none of it for a real shop):
+#  - The site goes to sleep after 15 minutes without visitors and takes about a minute to wake up.
+#  - The free database is deleted after 30 days unless you upgrade it. Don't keep real data on it.
+#  - Product photos are kept in the database (STORAGE_DRIVER=db) because the free plan has no disk.
+#  - Background jobs run inside the web service (RUN_WORKER_IN_WEB), so they only run while it is awake.
+#  - There is no Shell on the free plan, so first-time setup runs automatically at start-up (npm run bootstrap):
+#    migrations, the draft catalogue, and your owner account from OWNER_EMAIL / OWNER_PASSWORD.
+#
+# When you are ready to go live, switch to render.paid.yaml (see the README).
 databases:
   - name: divine-crown-db
-    plan: basic-256mb
+    plan: free
     databaseName: shop
     user: shop
 
@@ -14,15 +20,20 @@ services:
   - type: web
     name: divine-crown-shop
     runtime: node
-    plan: starter
-    buildCommand: npm ci --include=dev && npm run build
-    preDeployCommand: npm run db:migrate
-    startCommand: npm start
+    plan: free
+    buildCommand: npm ci --omit=dev && npm run use-prebuilt
+    startCommand: npm run bootstrap && npm start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: 22
+      # Keeps the running site inside the free plan's 512 MB of memory
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=320
+      # Stops Linux from holding on to freed memory; saves ~100 MB on small servers
+      - key: MALLOC_ARENA_MAX
+        value: "2"
       - key: DATABASE_URL
         fromDatabase: { name: divine-crown-db, property: connectionString }
       - key: APP_SECRET
@@ -31,71 +42,20 @@ services:
         generateValue: true
       - key: MPESA_CALLBACK_SECRET
         generateValue: true
-      # Public address. Set to your custom domain once connected, e.g. https://www.divinecrownorganics.co.ke
+      - key: STORAGE_DRIVER
+        value: db
+      - key: RUN_WORKER_IN_WEB
+        value: "true"
+      # Your owner sign-in. Used once, on first start. Delete OWNER_PASSWORD from Render afterwards.
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_NAME
+        sync: false
+      - key: OWNER_PASSWORD
+        sync: false
+      # Address of the site, e.g. https://divine-crown-shop.onrender.com (shown in Render once the service exists;
+      # you can fill it in after the first deploy and let it redeploy).
       - key: APP_URL
         sync: false
-      # MPESA_ENV: leave blank until Safaricom credentials are ready, then "sandbox" or "production". Never "simulator" on a live site.
-      - key: MPESA_ENV
-        sync: false
-      - key: MPESA_CALLBACK_BASE_URL
-        sync: false
-      - key: MPESA_CONSUMER_KEY
-        sync: false
-      - key: MPESA_CONSUMER_SECRET
-        sync: false
-      - key: MPESA_SHORTCODE
-        sync: false
-      - key: MPESA_PASSKEY
-        sync: false
-      - key: MPESA_TRANSACTION_TYPE
-        value: CustomerPayBillOnline
-      - key: EMAIL_FROM
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      # Product photos and expense receipts are saved here. Render's disk is wiped on every deploy unless you
-      # attach a persistent disk (below), so uploads survive.
-      - key: STORAGE_DIR
-        value: /var/data/storage
-      - key: ERROR_WEBHOOK_URL
-        sync: false
-    disk:
-      name: shop-files
-      mountPath: /var/data
-      sizeGB: 5
-
-  - type: worker
-    name: divine-crown-worker
-    runtime: node
-    plan: starter
-    buildCommand: npm ci --include=dev
-    startCommand: npm run worker
-    envVars:
-      - key: NODE_VERSION
-        value: 22
-      - key: DATABASE_URL
-        fromDatabase: { name: divine-crown-db, property: connectionString }
-      - key: APP_SECRET
-        fromService: { type: web, name: divine-crown-shop, envVarKey: APP_SECRET }
-      - key: APP_URL
-        fromService: { type: web, name: divine-crown-shop, envVarKey: APP_URL }
-      - key: MPESA_ENV
-        sync: false
-      - key: MPESA_CONSUMER_KEY
-        sync: false
-      - key: MPESA_CONSUMER_SECRET
-        sync: false
-      - key: MPESA_SHORTCODE
-        sync: false
-      - key: MPESA_PASSKEY
-        sync: false
-      - key: MPESA_CALLBACK_BASE_URL
-        sync: false
-      - key: MPESA_CALLBACK_SECRET
-        fromService: { type: web, name: divine-crown-shop, envVarKey: MPESA_CALLBACK_SECRET }
-      - key: EMAIL_FROM
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: ERROR_WEBHOOK_URL
-        sync: false
+      # M-Pesa and email stay off for testing: leave these unset.
+      # MPESA_ENV, RESEND_API_KEY, EMAIL_FROM

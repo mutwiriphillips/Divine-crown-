@@ -11,11 +11,13 @@ import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -23,6 +25,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 const id = () => uuid("id").primaryKey().defaultRandom();
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 const createdAt = () => ts("created_at").notNull().defaultNow();
@@ -1441,3 +1444,16 @@ export const promotionRedemptionsRelations = relations(promotionRedemptions, ({ 
 export const dataRequestsRelations = relations(dataRequests, ({ one }) => ({
   customer: one(customers, { fields: [dataRequests.customerId], references: [customers.id] }),
 }));
+
+/** Uploaded files kept in the database (STORAGE_DRIVER=db). For hosts without a persistent disk. */
+export const storedFiles = pgTable(
+  "stored_files",
+  {
+    visibility: text("visibility").notNull(),
+    key: text("key").notNull(),
+    contentType: text("content_type").notNull().default("application/octet-stream"),
+    body: bytea("body").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.visibility, t.key] })],
+);

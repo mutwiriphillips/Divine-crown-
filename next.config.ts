@@ -26,7 +26,11 @@ const securityHeaders = [
 const config: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["sharp", "pdfkit", "pg"],
-  experimental: { serverActions: { bodySizeLimit: "10mb" } },
+  experimental: { serverActions: { bodySizeLimit: "10mb" }, webpackMemoryOptimizations: true, ...(process.env.SKIP_BUILD_CHECKS === "true" ? { cpus: 1 } : {}) },
+  // Type errors are caught by `npm run lint` (tsc) before release. Low-memory hosts (Render's free plan, 512 MB)
+  // can set SKIP_BUILD_CHECKS=true to skip the second type-check pass during `next build`.
+  typescript: { ignoreBuildErrors: process.env.SKIP_BUILD_CHECKS === "true" },
+  eslint: { ignoreDuringBuilds: true },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

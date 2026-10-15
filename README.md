@@ -165,24 +165,46 @@ You can run without Docker too. Use `npm ci && npm run build`, then run `npm sta
 
 ### Option B — Render (render.yaml included)
 
-`render.yaml` sets up everything in one go: the web app, the background worker and a Postgres database.
+There are two blueprints. **Start with the free one to check everything works, then move to the paid one when you are ready to sell.**
 
-1. Put the project in a GitHub repository (`.env` and `node_modules` are already git-ignored; keep `seed-photos/` in it).
-2. In Render choose **New → Blueprint**, pick the repository and approve. Render asks for the values marked `sync: false`. For now only `APP_URL` matters: use the address Render gives you (for example `https://divine-crown-shop.onrender.com`), or your own domain later. Leave the M-Pesa and email values blank until you have them.
-3. Render builds, runs `npm run db:migrate` before each deploy, and checks `/api/health`.
-4. Once it's live, open the web service's **Shell** tab and run, once:
-   ```bash
-   npm run db:seed
-   OWNER_EMAIL=you@example.com OWNER_NAME="Your Name" OWNER_PASSWORD='a long passphrase' npm run create-owner
-   ```
-5. Sign in at `/admin`, then follow [Going live](#going-live).
+#### B1. Free plan, for testing (`render.yaml`)
 
-Things to know about Render:
-- Both services are on the paid **Starter** plan, and the database is `basic-256mb`. Free instances sleep when idle, which would stop the worker and could make an M-Pesa callback arrive while the app is asleep.
-- The 5 GB disk keeps product photos and expense receipts between deploys. Only the web service has it, which is fine because the worker doesn't touch files. A disk also means the web service runs as a single instance. To scale beyond that, use `STORAGE_DRIVER=s3` instead and remove the `disk:` block.
-- `APP_SECRET`, `CRON_SECRET` and `MPESA_CALLBACK_SECRET` are generated for you. Don't change `APP_SECRET` after two-step sign-in is set up, or those secrets stop working.
-- If you connect a custom domain, update `APP_URL` and `MPESA_CALLBACK_BASE_URL` to match and redeploy.
-- Back up the database from Render's dashboard (Postgres backups) as well as with `npm run db:backup`.
+1. Put the project in a GitHub repository. Keep the `prebuilt/` folder and `seed-photos/` in it (`.env` and `node_modules` are git-ignored).
+2. In Render choose **New → Blueprint**, pick the repository and approve. Render asks for the values marked `sync: false`:
+   - `OWNER_EMAIL`, `OWNER_NAME`, `OWNER_PASSWORD`: your sign-in. Use a long passphrase.
+   - `APP_URL`: the address Render gives the site, for example `https://divine-crown-shop.onrender.com`. You can leave it blank first, then fill it in and redeploy.
+3. Render installs and starts the site. On first start it runs `npm run bootstrap`, which applies the database migrations, loads the draft catalogue from your photos and creates your owner account. Running it again is safe.
+4. Open `/api/health`. It should show `{"ok":true}`. Then sign in at `/admin`.
+5. Delete `OWNER_PASSWORD` from the Render environment once you can sign in.
+
+What the free plan means (fine for testing, not for a real shop):
+- The site sleeps after 15 minutes without visitors and takes about a minute to wake. To keep it awake while you test, point a free pinger (for example UptimeRobot) at `/api/health` every 10 minutes.
+- The free database is deleted after 30 days. Do not keep real data on it.
+- Product photos live in the database (`STORAGE_DRIVER=db`) because the free plan has no disk.
+- Background jobs (emails, payment checks) run inside the web service (`RUN_WORKER_IN_WEB=true`), so they only run while it is awake.
+- There is no Shell. First-time setup is done by `npm run bootstrap` at start-up.
+- Leave M-Pesa and email unset. The site says clearly that they are not connected.
+- The site has 512 MB of memory. It was tuned for that (`NODE_OPTIONS`, `MALLOC_ARENA_MAX`, limited image resizing). In a simulation on this setup the site used about 250 MB idle and 376 MB at its busiest. Render itself could not be tested from here.
+
+**Important: the build is prebuilt.** Building Next.js needs about 1 GB of memory, more than the free plan has, so the finished build is stored in `prebuilt/` and Render only installs and starts it. After ANY change to the code or `package-lock.json`, run this and commit the result:
+
+```bash
+npm run pack-build   # builds and refreshes prebuilt/
+git add -A && git commit -m "Update build" && git push
+```
+
+If you forget, the Render build stops with a clear message saying the prebuilt copy is out of date instead of deploying the old code.
+
+#### B2. Paid plan, for going live (`render.paid.yaml`)
+
+1. Replace `render.yaml` with `render.paid.yaml` (rename it), commit and push, then create the Blueprint again, or change the plan of the existing services in the dashboard.
+2. It adds a separate background worker, a 5 GB disk for photos and receipts (so `STORAGE_DRIVER=local`), and a paid database that is not deleted. A disk means the web service runs as a single instance. To scale, use `STORAGE_DRIVER=s3` and remove the `disk:` block.
+3. Paid web services on Render's Starter size also have 512 MB, so the prebuilt build is still used. If you move to a larger size you can build on Render instead.
+4. In the Shell tab you can then run `npm run db:seed` and `npm run create-owner` yourself.
+5. Set `APP_URL` and `MPESA_CALLBACK_BASE_URL` to your real address (and update them if you add a custom domain), then follow [Going live](#going-live).
+6. Move the data from the free database before it expires: `npm run db:backup` against the free database, then `npm run db:restore` on the new one.
+
+Both blueprints generate `APP_SECRET`, `CRON_SECRET` and `MPESA_CALLBACK_SECRET` for you. Don't change `APP_SECRET` after two-step sign-in is set up, or those secrets stop working. Back up the database with `npm run db:backup` as well as Render's own backups.
 
 ### Option C — Vercel + managed Postgres
 

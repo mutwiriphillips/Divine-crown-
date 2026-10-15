@@ -18,7 +18,10 @@
     "create-owner": "tsx scripts/create-owner.ts",
     "test": "vitest run",
     "test:e2e": "tsx tests/e2e/run.ts",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "bootstrap": "tsx scripts/bootstrap.ts",
+    "pack-build": "node scripts/prebuilt.mjs pack",
+    "use-prebuilt": "node scripts/prebuilt.mjs use"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1152.0",

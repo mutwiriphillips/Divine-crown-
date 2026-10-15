@@ -1,10 +1,14 @@
 import { mkdir, readFile, writeFile, unlink, stat } from "node:fs/promises";
 import path from "node:path";
+import { and, eq } from "drizzle-orm";
+import { db, schema } from "@/db";
 import { GetObjectCommand, PutObjectCommand, DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 /**
  * File storage adapter.
  *  STORAGE_DRIVER=local (default)  files under STORAGE_DIR (default ./storage). Fine for a single server.
+ *  STORAGE_DRIVER=db               files kept in the Postgres database. For hosts with no persistent disk (e.g. Render's
+ *                                  free plan). Fine for a few hundred product photos; use s3 for more.
  *  STORAGE_DRIVER=s3               any S3-compatible bucket (AWS S3, Cloudflare R2, DigitalOcean Spaces).
  *                                  S3_BUCKET_PUBLIC holds product images; S3_BUCKET_PRIVATE holds expense
  *                                  attachments and is only read through authorised routes.
@@ -47,6 +51,22 @@ const localDriver: Driver = {
   },
 };
 
+const dbDriver: Driver = {
+  async put(key, body, contentType, visibility) {
+    await db
+      .insert(schema.storedFiles)
+      .values({ visibility, key: safeKey(key), contentType, body })
+      .onConflictDoUpdate({ target: [schema.storedFiles.visibility, schema.storedFiles.key], set: { body, contentType } });
+  },
+  async get(key, visibility) {
+    const r = await db.query.storedFiles.findFirst({ where: and(eq(schema.storedFiles.visibility, visibility), eq(schema.storedFiles.key, safeKey(key))) });
+    return r ? Buffer.from(r.body) : null;
+  },
+  async remove(key, visibility) {
+    await db.delete(schema.storedFiles).where(and(eq(schema.storedFiles.visibility, visibility), eq(schema.storedFiles.key, safeKey(key))));
+  },
+};
+
 let s3: S3Client | null = null;
 function s3Client() {
   s3 ??= new S3Client({
@@ -76,7 +96,7 @@ const s3Driver: Driver = {
   },
 };
 
-export const storage: Driver = process.env.STORAGE_DRIVER === "s3" ? s3Driver : localDriver;
+export const storage: Driver = process.env.STORAGE_DRIVER === "s3" ? s3Driver : process.env.STORAGE_DRIVER === "db" ? dbDriver : localDriver;
 
 const MAGIC: { mime: string; ext: string; test: (b: Buffer) => boolean }[] = [
   { mime: "image/jpeg", ext: "jpg", test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },

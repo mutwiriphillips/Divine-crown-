@@ -1,4 +1,8 @@
 import sharp from "sharp";
+
+// Keep image processing light on small servers (e.g. 512 MB hosts): one thread, small cache.
+sharp.cache({ memory: 16, files: 0, items: 20 });
+sharp.concurrency(1);
 import { eq } from "drizzle-orm";
 import { db, schema, type Executor } from "@/db";
 import { MAX_UPLOAD_BYTES, sniffType, storage } from "@/lib/storage";
@@ -70,7 +74,8 @@ export async function renderVariant(assetId: string, width: number, crop: Crop):
   if (cached) return cached;
   const original = await storage.get(asset.storageKey, "public");
   if (!original) return null;
-  let pipeline = sharp(original);
+  return limited(async () => {
+  let pipeline = sharp(original, { sequentialRead: true });
   if (crop) {
     const left = Math.max(0, Math.round(crop.x * asset.width));
     const top = Math.max(0, Math.round(crop.y * asset.height));
@@ -81,4 +86,19 @@ export async function renderVariant(assetId: string, width: number, crop: Crop):
   const out = await pipeline.resize({ width: w, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer();
   await storage.put(cacheKey, out, "image/webp", "public");
   return out;
+  });
+}
+
+// At most two images are resized at once, so a page with many new photos can't exhaust memory.
+let active = 0;
+const waiting: (() => void)[] = [];
+async function limited<T>(fn: () => Promise<T>): Promise<T> {
+  if (active >= 2) await new Promise<void>((r) => waiting.push(r));
+  active++;
+  try {
+    return await fn();
+  } finally {
+    active--;
+    waiting.shift()?.();
+  }
 }
