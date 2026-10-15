@@ -7,6 +7,7 @@
  * real financial records.
  */
 import "dotenv/config";
+import "../src/lib/env-cleanup";
 import { sql } from "drizzle-orm";
 import { db, getPool } from "@/db";
 

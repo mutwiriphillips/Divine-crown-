@@ -1,37 +1,101 @@
+# Render Blueprint: web app + background worker + Postgres.
+# In Render: New → Blueprint → pick this repository. Render asks for the values marked "sync: false".
+# After the first deploy, open the web service's Shell once and run:
+#   npm run db:seed
+#   OWNER_EMAIL=you@example.com OWNER_NAME="Your Name" OWNER_PASSWORD='a long passphrase' npm run create-owner
+# (Migrations run automatically before every deploy.)
+databases:
+  - name: divine-crown-db
+    plan: basic-256mb
+    databaseName: shop
+    user: shop
+
 services:
   - type: web
-    name: josriri
+    name: divine-crown-shop
     runtime: node
-    plan: free
-    region: frankfurt
-    buildCommand: npm install
+    plan: starter
+    buildCommand: npm ci --include=dev && npm run build
+    preDeployCommand: npm run db:migrate
     startCommand: npm start
-    healthCheckPath: /healthz
+    healthCheckPath: /api/health
+    autoDeploy: true
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: JWT_SECRET
-        generateValue: true
-      - key: ADMIN_BOOTSTRAP_SECRET
-        generateValue: true
+      - key: NODE_VERSION
+        value: 22
       - key: DATABASE_URL
-        fromDatabase:
-          name: josriri-db
-          property: connectionString
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
+        fromDatabase: { name: divine-crown-db, property: connectionString }
+      - key: APP_SECRET
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
+      - key: MPESA_CALLBACK_SECRET
+        generateValue: true
+      # Public address. Set to your custom domain once connected, e.g. https://www.divinecrownorganics.co.ke
+      - key: APP_URL
         sync: false
-      - key: SMTP_PASS
+      # MPESA_ENV: leave blank until Safaricom credentials are ready, then "sandbox" or "production". Never "simulator" on a live site.
+      - key: MPESA_ENV
         sync: false
-      - key: ADMIN_NOTIFICATION_EMAIL
-        value: skywalkerstalents@gmail.com
+      - key: MPESA_CALLBACK_BASE_URL
+        sync: false
+      - key: MPESA_CONSUMER_KEY
+        sync: false
+      - key: MPESA_CONSUMER_SECRET
+        sync: false
+      - key: MPESA_SHORTCODE
+        sync: false
+      - key: MPESA_PASSKEY
+        sync: false
+      - key: MPESA_TRANSACTION_TYPE
+        value: CustomerPayBillOnline
+      - key: EMAIL_FROM
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      # Product photos and expense receipts are saved here. Render's disk is wiped on every deploy unless you
+      # attach a persistent disk (below), so uploads survive.
+      - key: STORAGE_DIR
+        value: /var/data/storage
+      - key: ERROR_WEBHOOK_URL
+        sync: false
+    disk:
+      name: shop-files
+      mountPath: /var/data
+      sizeGB: 5
 
-databases:
-  - name: josriri-db
-    plan: free
-    region: frankfurt
-    databaseName: josriri_sports
-    user: josriri_admin
+  - type: worker
+    name: divine-crown-worker
+    runtime: node
+    plan: starter
+    buildCommand: npm ci --include=dev
+    startCommand: npm run worker
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: DATABASE_URL
+        fromDatabase: { name: divine-crown-db, property: connectionString }
+      - key: APP_SECRET
+        fromService: { type: web, name: divine-crown-shop, envVarKey: APP_SECRET }
+      - key: APP_URL
+        fromService: { type: web, name: divine-crown-shop, envVarKey: APP_URL }
+      - key: MPESA_ENV
+        sync: false
+      - key: MPESA_CONSUMER_KEY
+        sync: false
+      - key: MPESA_CONSUMER_SECRET
+        sync: false
+      - key: MPESA_SHORTCODE
+        sync: false
+      - key: MPESA_PASSKEY
+        sync: false
+      - key: MPESA_CALLBACK_BASE_URL
+        sync: false
+      - key: MPESA_CALLBACK_SECRET
+        fromService: { type: web, name: divine-crown-shop, envVarKey: MPESA_CALLBACK_SECRET }
+      - key: EMAIL_FROM
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ERROR_WEBHOOK_URL
+        sync: false

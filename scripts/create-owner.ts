@@ -4,6 +4,7 @@
  * If OWNER_PASSWORD is omitted, a strong password is generated and printed once.
  */
 import "dotenv/config";
+import "../src/lib/env-cleanup";
 import { eq } from "drizzle-orm";
 import { db, getPool, schema } from "@/db";
 import { hashPassword, normalizeEmail, validatePasswordStrength } from "@/lib/auth/core";

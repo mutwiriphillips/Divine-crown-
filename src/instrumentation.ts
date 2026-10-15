@@ -3,7 +3,9 @@
  * endpoint), unhandled server errors are posted there as JSON. No customer data is sent: only the error
  * message, the route and a digest. Errors are always written to the server log.
  */
-export async function register() {}
+export async function register() {
+  await import("./lib/env-cleanup");
+}
 
 export async function onRequestError(
   err: unknown,

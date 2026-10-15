@@ -6,6 +6,7 @@
  *   npm run db:seed:demo
  */
 import "dotenv/config";
+import "../src/lib/env-cleanup";
 import sharp from "sharp";
 import { eq } from "drizzle-orm";
 import { db, getPool, schema } from "@/db";

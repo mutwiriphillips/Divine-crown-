@@ -6,6 +6,7 @@
  * several workers never process the same job). On serverless hosting, call /api/cron/tick instead.
  */
 import "dotenv/config";
+import "../src/lib/env-cleanup";
 import { hostname } from "node:os";
 import { getPool } from "@/db";
 import { processJobs, scheduledTick } from "@/lib/worker-tasks";

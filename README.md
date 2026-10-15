@@ -141,7 +141,7 @@ Work through **Admin → Settings → Integrations**. It shows what is and isn't
 
 ## Deployment
 
-### Option A — your own server (recommended to start)
+### Option A — your own server
 
 A small VPS (2 GB RAM) runs everything with Docker:
 
@@ -163,7 +163,28 @@ shop.example.co.ke {
 
 You can run without Docker too. Use `npm ci && npm run build`, then run `npm start` and `npm run worker` under systemd or pm2, with Postgres installed locally or managed.
 
-### Option B — Vercel + managed Postgres
+### Option B — Render (render.yaml included)
+
+`render.yaml` sets up everything in one go: the web app, the background worker and a Postgres database.
+
+1. Put the project in a GitHub repository (`.env` and `node_modules` are already git-ignored; keep `seed-photos/` in it).
+2. In Render choose **New → Blueprint**, pick the repository and approve. Render asks for the values marked `sync: false`. For now only `APP_URL` matters: use the address Render gives you (for example `https://divine-crown-shop.onrender.com`), or your own domain later. Leave the M-Pesa and email values blank until you have them.
+3. Render builds, runs `npm run db:migrate` before each deploy, and checks `/api/health`.
+4. Once it's live, open the web service's **Shell** tab and run, once:
+   ```bash
+   npm run db:seed
+   OWNER_EMAIL=you@example.com OWNER_NAME="Your Name" OWNER_PASSWORD='a long passphrase' npm run create-owner
+   ```
+5. Sign in at `/admin`, then follow [Going live](#going-live).
+
+Things to know about Render:
+- Both services are on the paid **Starter** plan, and the database is `basic-256mb`. Free instances sleep when idle, which would stop the worker and could make an M-Pesa callback arrive while the app is asleep.
+- The 5 GB disk keeps product photos and expense receipts between deploys. Only the web service has it, which is fine because the worker doesn't touch files. A disk also means the web service runs as a single instance. To scale beyond that, use `STORAGE_DRIVER=s3` instead and remove the `disk:` block.
+- `APP_SECRET`, `CRON_SECRET` and `MPESA_CALLBACK_SECRET` are generated for you. Don't change `APP_SECRET` after two-step sign-in is set up, or those secrets stop working.
+- If you connect a custom domain, update `APP_URL` and `MPESA_CALLBACK_BASE_URL` to match and redeploy.
+- Back up the database from Render's dashboard (Postgres backups) as well as with `npm run db:backup`.
+
+### Option C — Vercel + managed Postgres
 
 1. Use a managed Postgres (Neon, Supabase or similar) and set `DATABASE_SSL=true`.
 2. Set `STORAGE_DRIVER=s3` with an S3-compatible bucket (Cloudflare R2, AWS S3), because serverless disks are not kept.

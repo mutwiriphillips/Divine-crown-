@@ -1,3 +1,4 @@
+import "@/lib/env-cleanup";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import type { NodePgQueryResultHKT } from "drizzle-orm/node-postgres";

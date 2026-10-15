@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "../src/lib/env-cleanup";
 
 /**
  * Integration tests run against a separate, throwaway database. It is DROPPED and re-created on every run,

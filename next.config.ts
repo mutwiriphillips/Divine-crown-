@@ -24,7 +24,6 @@ const securityHeaders = [
 ];
 
 const config: NextConfig = {
-  output: "standalone",
   poweredByHeader: false,
   serverExternalPackages: ["sharp", "pdfkit", "pg"],
   experimental: { serverActions: { bodySizeLimit: "10mb" } },

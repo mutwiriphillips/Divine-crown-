@@ -10,6 +10,7 @@
  *   sample data (`npm run db:seed:demo`). Skipped automatically if any of those are missing.
  */
 import "dotenv/config";
+import "../../src/lib/env-cleanup";
 
 const BASE = (process.env.E2E_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const DEMO_PASSWORD = process.env.E2E_DEMO_PASSWORD ?? "demo-password-123";

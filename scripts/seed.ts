@@ -7,7 +7,8 @@
  * This does NOT create any staff login. Create the owner account with:  npm run create-owner
  */
 import "dotenv/config";
-import { readFile } from "node:fs/promises";
+import "../src/lib/env-cleanup";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import { db, getPool, schema } from "@/db";
@@ -57,9 +58,19 @@ async function seedCatalog(photoDir: string) {
     console.log("Catalogue already seeded; skipping.");
     return;
   }
+  try {
+    await access(path.join(photoDir, PRODUCTS.find((p) => p.images.length)!.images[0].file));
+  } catch {
+    throw new Error(`Product photos not found in ${photoDir}. Put the photos there or set SEED_PHOTOS_DIR to their folder.`);
+  }
   const assetByFile = new Map<string, string>();
   const asset = async (file: string, note?: string) => {
     if (assetByFile.has(file)) return assetByFile.get(file)!;
+    const prior = await db.query.mediaAssets.findFirst({ where: eq(schema.mediaAssets.originalName, file) });
+    if (prior) {
+      assetByFile.set(file, prior.id);
+      return prior.id;
+    }
     const buf = await readFile(path.join(photoDir, file));
     const a = await importImage(buf, { originalName: file, sourceNote: note ?? `Owner photo ${file}` });
     assetByFile.set(file, a.id);
@@ -70,6 +81,15 @@ async function seedCatalog(photoDir: string) {
   const variantByKey = new Map<string, string>();
   for (const p of PRODUCTS) {
     const cat = cats.find((c) => c.slug === p.category);
+    // Re-runnable: products created by an earlier, interrupted run are kept as they are.
+    const existing = await db.query.products.findFirst({ where: eq(schema.products.slug, slugify(p.name)), with: { variants: true } });
+    if (existing) {
+      if (existing.variants[0]) variantByKey.set(p.key, existing.variants[0].id);
+      const hasImages = await db.query.productImages.findFirst({ where: eq(schema.productImages.productId, existing.id) });
+      if (!hasImages) await addImages(existing.id, p.images);
+      console.log(`  = ${p.name} (already there)`);
+      continue;
+    }
     const [prod] = await db
       .insert(schema.products)
       .values({
@@ -97,11 +117,15 @@ async function seedCatalog(photoDir: string) {
       })
       .returning();
     variantByKey.set(p.key, v.id);
+    await addImages(prod.id, p.images);
+    console.log(`  + ${p.name}${p.images.length ? ` (${p.images.length} image${p.images.length > 1 ? "s" : ""})` : " (no image)"}`);
+  }
+  async function addImages(productId: string, images: (typeof PRODUCTS)[number]["images"]) {
     let order = 0;
-    for (const im of p.images) {
+    for (const im of images) {
       const assetId = await asset(im.file);
       await db.insert(schema.productImages).values({
-        productId: prod.id,
+        productId,
         assetId,
         alt: im.alt,
         sortOrder: order++,
@@ -111,11 +135,10 @@ async function seedCatalog(photoDir: string) {
         cropH: im.crop?.[3] ?? null,
       });
     }
-    console.log(`  + ${p.name}${p.images.length ? ` (${p.images.length} image${p.images.length > 1 ? "s" : ""})` : " (no image)"}`);
   }
   for (const p of PRODUCTS.filter((x) => x.bundleOf)) {
     for (const b of p.bundleOf!) {
-      await db.insert(schema.bundleItems).values({ bundleVariantId: variantByKey.get(p.key)!, componentVariantId: variantByKey.get(b.key)!, qty: b.qty });
+      await db.insert(schema.bundleItems).values({ bundleVariantId: variantByKey.get(p.key)!, componentVariantId: variantByKey.get(b.key)!, qty: b.qty }).onConflictDoNothing();
     }
   }
   for (const l of LIBRARY_ONLY) await asset(l.file, l.note);
